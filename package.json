@@ -1,0 +1,9 @@
+{
+  "name": "anti-pisyabot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "dependencies": {
+    "telegraf": "^4.16.3"
+  }
+}
