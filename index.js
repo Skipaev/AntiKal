@@ -3,8 +3,8 @@ import { Telegraf } from "telegraf";
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // ID или username пися бота (замени на своего!)
-const PISYA_BOT_ID = 123456789; // или "@pisyabot"
-const PISYA_BOT_USERNAME = "@pisyabot"; // если знаешь точный username
+const PISYA_BOT_ID = 1264548383; // или "@pisyabot"
+const PISYA_BOT_USERNAME = "@pipisabot"; // если знаешь точный username
 
 bot.on("message", async (ctx) => {
   const message = ctx.message;
