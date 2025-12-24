@@ -1,94 +1,70 @@
 import { Telegraf } from "telegraf";
 
-if (!process.env.BOT_TOKEN) {
-  console.error("❌ BOT_TOKEN не найден!");
-  process.exit(1);
-}
+const bot = new Telegraf(process.env.BOT_TOKEN!);
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
-
-// Настройки пися бота
 const PISYA_BOT_ID = 1264548383;
-const PISYA_BOT_USERNAME = "pipisabot";
 
-// Статистика
-let stats = {
-  started: new Date().toISOString(),
-  messagesTotal: 0,
-  messagesFromPisya: 0,
-  adsDeleted: 0,
-  lastPisyaMessage: null
-};
+// Проверка прав бота при старте в группе
+bot.command("checkrights", async (ctx) => {
+  try {
+    const chat = await ctx.getChat();
+    const botInfo = await ctx.telegram.getMe();
+    const member = await ctx.telegram.getChatMember(ctx.chat!.id, botInfo.id);
+    
+    const isAdmin = member.status === "administrator" || member.status === "creator";
+    const canDelete = member.status === "administrator" && member.can_delete_messages;
+    
+    await ctx.reply(
+`🔍 *Диагностика:*
 
-// Команда /status — проверка что бот работает
-bot.command("status", async (ctx) => {
-  const uptime = Math.floor((Date.now() - new Date(stats.started)) / 1000 / 60);
-  
-  await ctx.reply(
-`✅ *Анти-пися бот работает!*
+🤖 Мой ID: ${botInfo.id}
+👥 Чат: ${chat.title || "личка"}
+📊 Мой статус: ${member.status}
+🛡 Я админ: ${isAdmin ? "✅ Да" : "❌ Нет"}
+🗑 Могу удалять: ${canDelete ? "✅ Да" : "❌ Нет"}
 
-⏱ Работаю уже: ${uptime} мин
-📨 Всего сообщений видел: ${stats.messagesTotal}
-🎯 От пися бота: ${stats.messagesFromPisya}
-🗑 Рекламы удалено: ${stats.adsDeleted}
-📅 Последнее от пися бота: ${stats.lastPisyaMessage || "ещё не было"}`,
-    { parse_mode: "Markdown" }
-  );
+${!isAdmin ? "⚠️ *Сделай меня админом чтобы видеть ботов!*" : ""}`,
+      { parse_mode: "Markdown" }
+    );
+  } catch (e: any) {
+    await ctx.reply(`❌ Ошибка: ${e.message}`);
+  }
 });
 
-// Команда /ping — быстрая проверка
-bot.command("ping", (ctx) => ctx.reply("🏓 Понг! Бот жив!"));
-
-// Логируем ВСЕ сообщения
-bot.on("message", async (ctx) => {
-  const message = ctx.message;
-  if (!message || !message.from) return;
-
-  stats.messagesTotal++;
+// Слушаем ВСЕ типы апдейтов
+bot.use(async (ctx, next) => {
+  // Логируем сырой апдейт
+  const update = ctx.update;
+  console.log("📥 Raw update type:", Object.keys(update).join(", "));
   
-  const from = message.from;
-  const isBot = from.is_bot;
-  
-  // Логируем сообщения от ЛЮБЫХ ботов (чтобы понять что видим)
-  if (isBot) {
-    console.log(`🤖 Сообщение от бота: @${from.username || "?"} (ID: ${from.id})`);
-    console.log(`   Текст: ${message.text?.slice(0, 50) || "[не текст]"}`);
-    console.log(`   Есть кнопки: ${!!message.reply_markup}`);
+  if ("message" in update && update.message) {
+    const msg = update.message;
+    console.log(`📨 From: ${msg.from?.username || msg.from?.id} | is_bot: ${msg.from?.is_bot}`);
   }
+  
+  return next();
+});
+
+bot.on("message", async (ctx) => {
+  const from = ctx.message.from;
+  if (!from) return;
+
+  // Логируем КАЖДОЕ сообщение
+  console.log(`💬 [${from.is_bot ? "BOT" : "USER"}] @${from.username || from.id}: ${(ctx.message as any).text?.slice(0, 30) || "[media]"}`);
 
   // Проверяем пися бота
-  const isPisyaBot = from.id === PISYA_BOT_ID || from.username === PISYA_BOT_USERNAME;
-  
-  if (!isPisyaBot) return;
-
-  stats.messagesFromPisya++;
-  stats.lastPisyaMessage = new Date().toLocaleString("ru-RU");
-  
-  console.log(`🎯 ===== ПИСЯ БОТ ОБНАРУЖЕН =====`);
-  console.log(`   ID: ${from.id}`);
-  console.log(`   Username: @${from.username}`);
-  console.log(`   Текст: ${message.text || "[медиа/стикер]"}`);
-
-  // Есть кнопки = реклама
-  if (message.reply_markup?.inline_keyboard) {
-    console.log(`🗑 Удаляю рекламу...`);
-    try {
-      await ctx.deleteMessage();
-      stats.adsDeleted++;
-      console.log(`✅ Реклама удалена! Всего удалено: ${stats.adsDeleted}`);
-    } catch (e) {
-      console.log(`❌ Ошибка удаления: ${e.message}`);
+  if (from.id === PISYA_BOT_ID) {
+    console.log("🎯 PISYA BOT DETECTED!");
+    
+    if ((ctx.message as any).reply_markup?.inline_keyboard) {
+      try {
+        await ctx.deleteMessage();
+        console.log("✅ Deleted!");
+      } catch (e: any) {
+        console.log(`❌ Delete failed: ${e.message}`);
+      }
     }
-  } else {
-    console.log(`ℹ️ Без кнопок — не удаляю`);
   }
 });
 
-bot.catch((err) => console.error("❌ Ошибка:", err.message));
-
-bot.launch()
-  .then(() => console.log("✅ Бот запущен! Жду сообщений..."))
-  .catch((err) => console.error("❌ Не запустился:", err.message));
-
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
+bot.launch().then(() => console.log("✅ Bot started"));
